@@ -4,6 +4,9 @@ use thirtyfour::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+    // Load environment variables from .env file
+    dotenvy::dotenv().ok();
+
     // add options for custom executable firefox (using local symlink to avoid hardcoding paths)
     let mut caps = DesiredCapabilities::firefox();
     let binary_path = std::env::current_dir()?.join("waterfox");
@@ -127,15 +130,17 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     .await?;
 
     // Fill credentials...
-    // TODO: Add username and password from user input later
-    username_input.send_keys("my-username").await?;
+    let username = std::env::var("USERNAME").expect("USERNAME must be set in .env");
+    let password = std::env::var("PASSWORD").expect("PASSWORD must be set in .env");
+
+    username_input.send_keys(&username).await?;
 
     let password_input = driver
         .query(By::Css("input[formcontrolname='password']"))
         .or(By::Css("input[placeholder='Password']"))
         .first()
         .await?;
-    password_input.send_keys("my-password").await?;
+    password_input.send_keys(&password).await?;
 
     println!("Credentials entered!");
 
