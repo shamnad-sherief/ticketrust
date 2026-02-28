@@ -5,25 +5,25 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug executable 'my-automation-project'",
+            "name": "Debug executable 'ticketrust'",
             "type": "lldb",
             "request": "launch",
             "cargo": {
                 "args": [
                     "run",
-                    "--bin=my-automation-project"
+                    "--bin=ticketrust"
                 ]
             },
             "args": []
         },
         {
-            "name": "Debug unit tests in executable 'my-automation-project'",
+            "name": "Debug unit tests in executable 'ticketrust'",
             "type": "lldb",
             "request": "launch",
             "cargo": {
                 "args": [
                     "test",
-                    "--bin=my-automation-project"
+                    "--bin=ticketrust"
                 ]
             }
         }

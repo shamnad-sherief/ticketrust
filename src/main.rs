@@ -144,6 +144,32 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     println!("Credentials entered!");
 
+    // Click Sign In button with comprehensive error handling
+    println!("Attempting to click Sign In button...");
+    match async {
+        // Try multiple selectors
+        let button = driver
+            .query(By::XPath(
+                "//button[contains(normalize-space(), 'SIGN IN')]",
+            ))
+            .or(By::Css("button[label='SIGN IN']"))
+            .or(By::Css("button.login-button"))
+            .or(By::Css("button.btn-primary[type='submit']"))
+            .wait(Duration::from_secs(3), Duration::from_millis(500))
+            .first()
+            .await?;
+
+        button.click().await?;
+        Ok::<(), thirtyfour::error::WebDriverError>(())
+    }
+    .await
+    {
+        Ok(_) => println!("Sign In clicked successfully"),
+        Err(e) => {
+            eprintln!("Sign In button error: {}", e);
+        }
+    }
+
     // Prevent program from exiting
     println!("Browser is open.....");
     println!("Press Enter to close browser...");
