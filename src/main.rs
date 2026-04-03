@@ -186,6 +186,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .filter(|s| !s.is_empty())
         .collect();
 
+    let passenger_name = std::env::var("PASSENGER_NAME").unwrap_or_else(|_| "John Doe".to_string());
+    let passenger_age = std::env::var("PASSENGER_AGE").unwrap_or_else(|_| "30".to_string());
+    // Options are typically "M", "F", "T" or "Male" etc based on IRCTC <select> option text or value
+    let passenger_gender = std::env::var("PASSENGER_GENDER").unwrap_or_else(|_| "M".to_string());
+    let passenger_pref = std::env::var("PASSENGER_PREFERENCE").unwrap_or_else(|_| "U".to_string());
+
     println!("Waiting for source station input field...");
     let input_field1 = driver
         .query(By::Css("input[aria-controls='pr_id_1_list']"))
@@ -371,23 +377,108 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
                 // Attempt to click the first availability date box
                 println!("Clicking on the availability date box...");
-                if let Ok(date_block) = card.query(By::Css("table td div.pre-avl, div.ui-table td div")).wait(Duration::from_secs(5), Duration::from_millis(500)).first().await {
-                    let r = driver.execute("arguments[0].click();", vec![date_block.to_json()?]).await;
+                if let Ok(date_block) = card
+                    .query(By::Css("table td div.pre-avl, div.ui-table td div"))
+                    .wait(Duration::from_secs(5), Duration::from_millis(500))
+                    .first()
+                    .await
+                {
+                    let r = driver
+                        .execute("arguments[0].click();", vec![date_block.to_json()?])
+                        .await;
                     if r.is_err() {
                         let _ = date_block.click().await;
                     }
                     tokio::time::sleep(Duration::from_millis(500)).await;
                 } else {
-                    println!("Could not find specific date block, proceeding to click Book Now directly if possible...");
+                    println!(
+                        "Could not find specific date block, proceeding to click Book Now directly if possible..."
+                    );
                 }
 
                 println!("Clicking 'Book Now' button...");
-                if let Ok(book_now_btn) = card.query(By::Css("button.btnDefault.train_Search, button.disable-book")).wait(Duration::from_secs(5), Duration::from_millis(500)).first().await {
-                    let r = driver.execute("arguments[0].click();", vec![book_now_btn.to_json()?]).await;
+                if let Ok(book_now_btn) = card
+                    .query(By::Css(
+                        "button.btnDefault.train_Search, button.disable-book",
+                    ))
+                    .wait(Duration::from_secs(5), Duration::from_millis(500))
+                    .first()
+                    .await
+                {
+                    let r = driver
+                        .execute("arguments[0].click();", vec![book_now_btn.to_json()?])
+                        .await;
                     if r.is_err() {
                         let _ = book_now_btn.click().await;
                     }
                     println!("Successfully clicked Book Now!");
+
+                    // Proceed to enter passenger details
+                    println!("Waiting for Passenger Details page...");
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+
+                    // Passenger Name
+                    if let Ok(name_input) = driver
+                        .query(By::Css(
+                            "input[placeholder='Name'], p-autocomplete#passengerName input",
+                        ))
+                        .wait(Duration::from_secs(20), Duration::from_millis(500))
+                        .first()
+                        .await
+                    {
+                        println!("Entering Passenger Name...");
+                        name_input.send_keys(&passenger_name).await?;
+                    } else {
+                        println!("Could not find Passenger Name input.");
+                    }
+
+                    // Passenger Age
+                    if let Ok(age_input) = driver
+                        .query(By::Css(
+                            "input[placeholder='Age'], input[formcontrolname='passengerAge']",
+                        ))
+                        .wait(Duration::from_secs(5), Duration::from_millis(500))
+                        .first()
+                        .await
+                    {
+                        println!("Entering Passenger Age...");
+                        age_input.send_keys(&passenger_age).await?;
+                    } else {
+                        println!("Could not find Passenger Age input.");
+                    }
+
+                    // Passenger Gender
+                    // Some IRCTC pages use p-dropdown or select for gender
+                    if let Ok(gender_select) = driver.query(By::Css("select[formcontrolname='passengerGender'], p-dropdown[formcontrolname='passengerGender']")).first().await {
+                        println!("Selecting Passenger Gender...");
+                        let _ = gender_select.send_keys(&passenger_gender).await;
+                        let _ = gender_select.send_keys(thirtyfour::Key::Enter).await;
+                    } else {
+                        println!("Could not find Passenger Gender select.");
+                    }
+
+                    // Passenger Berth Preference
+                    if let Ok(pref_select) = driver.query(By::Css("select[formcontrolname='passengerBerthChoice'], p-dropdown[formcontrolname='passengerBerthChoice']")).first().await {
+                        println!("Selecting Passenger Preference...");
+                        let _ = pref_select.send_keys(&passenger_pref).await;
+                    } else {
+                        println!("Could not find Passenger Berth Preference.");
+                    }
+
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    
+                    // Click Continue Button
+                    println!("Looking for Continue button...");
+                    if let Ok(continue_btn) = driver.query(By::XPath("//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]")).wait(Duration::from_secs(5), Duration::from_millis(500)).first().await {
+                        println!("Clicking Continue...");
+                        let r = driver.execute("arguments[0].click();", vec![continue_btn.to_json()?]).await;
+                        if r.is_err() {
+                            let _ = continue_btn.click().await;
+                        }
+                        println!("Successfully clicked Continue!");
+                    } else {
+                        println!("Could not find the Continue button.");
+                    }
                 } else {
                     println!("Error: Could not find 'Book Now' button. Is availability open?");
                 }
