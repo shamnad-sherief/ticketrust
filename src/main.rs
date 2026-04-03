@@ -476,6 +476,27 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                             let _ = continue_btn.click().await;
                         }
                         println!("Successfully clicked Continue!");
+                        
+                        println!("\n=======================================================");
+                        println!("CAPTCHA REQUIRED: Please solve it in the browser window");
+                        println!("and manually click 'Continue' on the Review page.");
+                        println!("Waiting to securely reach the Payment page...");
+                        println!("=======================================================\n");
+                        
+                        // Poll for URL change indicating the payment page was reached
+                        loop {
+                            tokio::time::sleep(Duration::from_secs(2)).await;
+                            if let Ok(url) = driver.current_url().await {
+                                if url.as_str().to_lowercase().contains("payment") {
+                                    println!("✅ Payment Page detected!");
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Further Payment logic goes here later!
+                        println!("Ready to handle payment selection...");
+                        
                     } else {
                         println!("Could not find the Continue button.");
                     }
