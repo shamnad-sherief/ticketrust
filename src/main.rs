@@ -175,6 +175,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         std::env::var("SOURCE_STATION").expect("SOURCE_STATION must be set in .env");
     let dest_station = std::env::var("DEST_STATION").expect("DEST_STATION must be set in .env");
     let journey_date = std::env::var("JOURNEY_DATE").expect("JOURNEY_DATE must be set in .env");
+    let journey_class = std::env::var("JOURNEY_CLASS").expect("JOURNEY_CLASS must be set in .env");
+    let journey_quota = std::env::var("JOURNEY_QUOTA").unwrap_or_else(|_| "GENERAL".to_string());
 
     println!("Waiting for source station input field...");
     let input_field1 = driver
@@ -197,7 +199,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     println!("Waiting for journey date input field...");
     // Finding the date field in IRCTC (often a p-calendar input with class ui-calendar)
     let date_field = driver
-        .query(By::Css("p-calendar input[type='text'], input.ui-inputtext.ui-widget"))
+        .query(By::Css(
+            "p-calendar input[type='text'], input.ui-inputtext.ui-widget",
+        ))
         .wait(Duration::from_secs(10), Duration::from_millis(500))
         .first()
         .await?;
@@ -205,11 +209,59 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // We clear the date field by sending Ctrl+a / Command+a followed by Delete, because simple .clear() sometimes doesn't work for frontend framework calendars
     date_field.send_keys(thirtyfour::Key::Control + "a").await?;
     date_field.send_keys(thirtyfour::Key::Backspace).await?;
-    
+
     println!("Entering journey date: {}", journey_date);
     date_field.send_keys(&journey_date).await?;
     // Send an Enter or Tab key to close the calendar popup
     date_field.send_keys(thirtyfour::Key::Tab).await?;
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    println!("Selecting journey class: {}", journey_class);
+    // Find and click the class dropdown
+    let class_dropdown = driver
+        .query(By::Id("journeyClass"))
+        .wait(Duration::from_secs(10), Duration::from_millis(500))
+        .first()
+        .await?;
+
+    // Attempt to click the dropdown to open it
+    class_dropdown.click().await?;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Find the option by aria-label
+    let class_option_css = format!("li[aria-label='{}']", journey_class);
+    let class_option = driver
+        .query(By::Css(&class_option_css))
+        .wait(Duration::from_secs(5), Duration::from_millis(500))
+        .first()
+        .await?;
+
+    class_option.click().await?;
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    println!("Selecting journey quota: {}", journey_quota);
+    // Find and click the quota dropdown
+    let quota_dropdown = driver
+        .query(By::Id("journeyQuota"))
+        .wait(Duration::from_secs(10), Duration::from_millis(500))
+        .first()
+        .await?;
+
+    // Attempt to click the dropdown to open it
+    quota_dropdown.click().await?;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Find the option by aria-label
+    let quota_option_css = format!("li[aria-label='{}']", journey_quota);
+    let quota_option = driver
+        .query(By::Css(&quota_option_css))
+        .wait(Duration::from_secs(5), Duration::from_millis(500))
+        .first()
+        .await?;
+
+    quota_option.click().await?;
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
