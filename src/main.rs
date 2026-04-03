@@ -197,11 +197,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     input_field2.send_keys(&dest_station).await?;
 
     println!("Waiting for journey date input field...");
-    // Finding the date field in IRCTC (often a p-calendar input with class ui-calendar)
+    // Finding the date field in IRCTC precisely by its ID
     let date_field = driver
-        .query(By::Css(
-            "p-calendar input[type='text'], input.ui-inputtext.ui-widget",
-        ))
+        .query(By::Css("#jDate input"))
         .wait(Duration::from_secs(10), Duration::from_millis(500))
         .first()
         .await?;
@@ -264,6 +262,27 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     quota_option.click().await?;
 
     tokio::time::sleep(Duration::from_secs(1)).await;
+
+    println!("Clicking Search Trains button...");
+    let search_button = driver
+        .query(By::Css("button.train_Search"))
+        .wait(Duration::from_secs(10), Duration::from_millis(500))
+        .first()
+        .await?;
+
+    // Sometimes a direct click doesn't work if elements overlay it, so we fallback to JS click if needed
+    match search_button.click().await {
+        Ok(_) => {}
+        Err(_) => {
+            driver
+                .execute("arguments[0].click();", vec![search_button.to_json()?])
+                .await?;
+        }
+    }
+    println!("Search initiated!");
+
+    // Give time for search results to load
+    tokio::time::sleep(Duration::from_secs(3)).await;
 
     // Prevent program from exiting
     println!("Browser is open.....");
