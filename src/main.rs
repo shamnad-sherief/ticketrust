@@ -178,6 +178,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let journey_class = std::env::var("JOURNEY_CLASS").expect("JOURNEY_CLASS must be set in .env");
     let journey_quota = std::env::var("JOURNEY_QUOTA").unwrap_or_else(|_| "GENERAL".to_string());
 
+    // Parse train numbers handling comma separated string
+    let train_numbers_env = std::env::var("TRAIN_NUMBERS").unwrap_or_default();
+    let target_trains: Vec<String> = train_numbers_env
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
     println!("Waiting for source station input field...");
     let input_field1 = driver
         .query(By::Css("input[aria-controls='pr_id_1_list']"))
@@ -283,6 +291,86 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     // Give time for search results to load
     tokio::time::sleep(Duration::from_secs(3)).await;
+
+    println!("Waiting for train result cards to load...");
+    // Wait until at least one train card is visible
+    let _ = driver
+        .query(By::Css(
+            "div.form-group.no-pad.col-xs-12.bull-back.border-all",
+        ))
+        .wait(Duration::from_secs(20), Duration::from_millis(500))
+        .first()
+        .await?;
+
+    let train_cards = driver
+        .query(By::Css(
+            "div.form-group.no-pad.col-xs-12.bull-back.border-all",
+        ))
+        .all_from_selector()
+        .await?;
+
+    println!("Found {} train cards", train_cards.len());
+
+    let mut selected_card: Option<WebElement> = None;
+
+    if target_trains.is_empty() {
+        println!("No TRAIN_NUMBERS specified. Proceeding with the first available train.");
+        selected_card = train_cards.into_iter().next();
+    } else {
+        println!("Looking for trains matching: {:?}", target_trains);
+        for card in train_cards {
+            if let Ok(heading) = card.find(By::Css(".train-heading strong")).await {
+                if let Ok(text) = heading.text().await {
+                    // Check if this train matches any in our list
+                    if target_trains.iter().any(|t| text.contains(t)) {
+                        println!("Found target train: {}", text);
+                        selected_card = Some(card);
+                        break; // Stop at the first preferred matched train
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(card) = selected_card {
+        println!(
+            "Looking for class match: '{}' in the selected train",
+            journey_class
+        );
+
+        // Find the clickable class blocks inside the train card
+        if let Ok(class_blocks) = card.query(By::Css(".pre-avl")).all_from_selector().await {
+            let mut clicked = false;
+            for block in class_blocks {
+                if let Ok(block_text) = block.text().await {
+                    if block_text.contains(&journey_class) {
+                        println!("Found matching class block: {}", block_text);
+                        // Click the class box to trigger availability check
+                        // We use javascript click here because Angular component overlaps can be tricky
+                        let r = driver
+                            .execute("arguments[0].click();", vec![block.to_json()?])
+                            .await;
+                        if r.is_err() {
+                            let _ = block.click().await;
+                        }
+                        clicked = true;
+                        break;
+                    }
+                }
+            }
+
+            if !clicked {
+                println!(
+                    "Could not find the class '{}' block or it was unavailable.",
+                    journey_class
+                );
+            }
+        } else {
+            println!("Could not find any class blocks inside the train card.");
+        }
+    } else {
+        println!("Could not find any of the target trains in the search results.");
+    }
 
     // Prevent program from exiting
     println!("Browser is open.....");
