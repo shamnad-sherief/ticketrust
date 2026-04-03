@@ -170,6 +170,49 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         }
     }
 
+    // After signin, input the two station fields from environment variables
+    let source_station =
+        std::env::var("SOURCE_STATION").expect("SOURCE_STATION must be set in .env");
+    let dest_station = std::env::var("DEST_STATION").expect("DEST_STATION must be set in .env");
+    let journey_date = std::env::var("JOURNEY_DATE").expect("JOURNEY_DATE must be set in .env");
+
+    println!("Waiting for source station input field...");
+    let input_field1 = driver
+        .query(By::Css("input[aria-controls='pr_id_1_list']"))
+        .wait(Duration::from_secs(10), Duration::from_millis(500))
+        .first()
+        .await?;
+    println!("Entering source station: {}", source_station);
+    input_field1.send_keys(&source_station).await?;
+
+    println!("Waiting for destination station input field...");
+    let input_field2 = driver
+        .query(By::Css("input[aria-controls='pr_id_2_list']"))
+        .wait(Duration::from_secs(10), Duration::from_millis(500))
+        .first()
+        .await?;
+    println!("Entering destination station: {}", dest_station);
+    input_field2.send_keys(&dest_station).await?;
+
+    println!("Waiting for journey date input field...");
+    // Finding the date field in IRCTC (often a p-calendar input with class ui-calendar)
+    let date_field = driver
+        .query(By::Css("p-calendar input[type='text'], input.ui-inputtext.ui-widget"))
+        .wait(Duration::from_secs(10), Duration::from_millis(500))
+        .first()
+        .await?;
+
+    // We clear the date field by sending Ctrl+a / Command+a followed by Delete, because simple .clear() sometimes doesn't work for frontend framework calendars
+    date_field.send_keys(thirtyfour::Key::Control + "a").await?;
+    date_field.send_keys(thirtyfour::Key::Backspace).await?;
+    
+    println!("Entering journey date: {}", journey_date);
+    date_field.send_keys(&journey_date).await?;
+    // Send an Enter or Tab key to close the calendar popup
+    date_field.send_keys(thirtyfour::Key::Tab).await?;
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
     // Prevent program from exiting
     println!("Browser is open.....");
     println!("Press Enter to close browser...");
