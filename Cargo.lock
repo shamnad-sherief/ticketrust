@@ -1080,6 +1080,8 @@ name = "ticketrust"
 version = "0.1.0"
 dependencies = [
  "dotenvy",
+ "serde",
+ "serde_json",
  "thirtyfour",
  "tokio",
 ]

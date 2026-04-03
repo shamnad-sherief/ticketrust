@@ -1,6 +1,15 @@
+use serde::Deserialize;
 use std::{error::Error, io, time::Duration};
 
 use thirtyfour::prelude::*;
+
+#[derive(Deserialize, Debug)]
+struct Passenger {
+    name: String,
+    age: String,
+    gender: String,
+    pref: Option<String>,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -186,11 +195,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .filter(|s| !s.is_empty())
         .collect();
 
-    let passenger_name = std::env::var("PASSENGER_NAME").unwrap_or_else(|_| "John Doe".to_string());
-    let passenger_age = std::env::var("PASSENGER_AGE").unwrap_or_else(|_| "30".to_string());
-    // Options are typically "M", "F", "T" or "Male" etc based on IRCTC <select> option text or value
-    let passenger_gender = std::env::var("PASSENGER_GENDER").unwrap_or_else(|_| "M".to_string());
-    let passenger_pref = std::env::var("PASSENGER_PREFERENCE").unwrap_or_else(|_| "U".to_string());
+    let passengers_env = std::env::var("PASSENGERS").unwrap_or_else(|_| "[]".to_string());
+    let passengers: Vec<Passenger> = serde_json::from_str(&passengers_env).expect("PASSENGERS must be a valid JSON array");
+
+    if passengers.is_empty() {
+        panic!("No passengers found in PASSENGERS environment variable");
+    }
 
     println!("Waiting for source station input field...");
     let input_field1 = driver
@@ -417,56 +427,128 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                     println!("Waiting for Passenger Details page...");
                     tokio::time::sleep(Duration::from_secs(5)).await;
 
-                    // Passenger Name
-                    if let Ok(name_input) = driver
-                        .query(By::Css(
-                            "input[placeholder='Name'], p-autocomplete#passengerName input",
-                        ))
-                        .wait(Duration::from_secs(20), Duration::from_millis(500))
-                        .first()
-                        .await
-                    {
-                        println!("Entering Passenger Name...");
-                        name_input.send_keys(&passenger_name).await?;
-                    } else {
-                        println!("Could not find Passenger Name input.");
+                    for (i, passenger) in passengers.iter().enumerate() {
+                        println!("Processing passenger {}: {}", i + 1, passenger.name);
+
+                        if i > 0 {
+                            println!("Clicking '+ Add Passenger' for passenger {}...", i + 1);
+                            let add_btn = driver
+                                .query(By::XPath("//span[contains(normalize-space(), '+ Add Passenger')]"))
+                                .wait(Duration::from_secs(5), Duration::from_millis(500))
+                                .first()
+                                .await?;
+                            add_btn.click().await?;
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                        }
+
+                        // Passenger Name
+                        let name_inputs = driver
+                            .query(By::Css(
+                                "input[placeholder='Name'], p-autocomplete#passengerName input",
+                            ))
+                            .all_from_selector()
+                            .await?;
+
+                        if let Some(name_input) = name_inputs.get(i) {
+                            println!("Entering Passenger Name...");
+                            name_input.send_keys(&passenger.name).await?;
+                        } else {
+                            println!("Could not find Passenger Name input for index {}.", i);
+                        }
+
+                        // Passenger Age
+                        let age_inputs = driver
+                            .query(By::Css(
+                                "input[placeholder='Age'], input[formcontrolname='passengerAge']",
+                            ))
+                            .all_from_selector()
+                            .await?;
+
+                        if let Some(age_input) = age_inputs.get(i) {
+                            println!("Entering Passenger Age...");
+                            age_input.send_keys(&passenger.age).await?;
+                        } else {
+                            println!("Could not find Passenger Age input for index {}.", i);
+                        }
+
+                        // Passenger Gender
+                        let gender_selects = driver
+                            .query(By::Css(
+                                "select[formcontrolname='passengerGender'], p-dropdown[formcontrolname='passengerGender']",
+                            ))
+                            .all_from_selector()
+                            .await?;
+
+                        if let Some(gender_select) = gender_selects.get(i) {
+                            println!("Selecting Passenger Gender...");
+                            let _ = gender_select.send_keys(&passenger.gender).await;
+                            let _ = gender_select.send_keys(thirtyfour::Key::Enter).await;
+                        } else {
+                            println!("Could not find Passenger Gender select for index {}.", i);
+                        }
+
+                        // Passenger Berth Preference
+                        if let Some(pref) = &passenger.pref {
+                            if !pref.trim().is_empty() {
+                                let pref_selects = driver
+                                    .query(By::Css(
+                                        "select[formcontrolname='passengerBerthChoice'], p-dropdown[formcontrolname='passengerBerthChoice']",
+                                    ))
+                                    .all_from_selector()
+                                    .await?;
+
+                                if let Some(pref_select) = pref_selects.get(i) {
+                                    println!("Selecting Passenger Preference: {}", pref);
+                                    let _ = pref_select.send_keys(pref).await;
+                                } else {
+                                    println!("Could not find Passenger Berth Preference for index {}.", i);
+                                }
+                            } else {
+                                println!("Skipping preference for passenger {} (empty)", i + 1);
+                            }
+                        } else {
+                            println!("Skipping preference for passenger {} (None)", i + 1);
+                        }
+
+                        tokio::time::sleep(Duration::from_millis(500)).await;
                     }
 
-                    // Passenger Age
-                    if let Ok(age_input) = driver
-                        .query(By::Css(
-                            "input[placeholder='Age'], input[formcontrolname='passengerAge']",
-                        ))
-                        .wait(Duration::from_secs(5), Duration::from_millis(500))
-                        .first()
-                        .await
-                    {
-                        println!("Entering Passenger Age...");
-                        age_input.send_keys(&passenger_age).await?;
-                    } else {
-                        println!("Could not find Passenger Age input.");
-                    }
-
-                    // Passenger Gender
-                    // Some IRCTC pages use p-dropdown or select for gender
-                    if let Ok(gender_select) = driver.query(By::Css("select[formcontrolname='passengerGender'], p-dropdown[formcontrolname='passengerGender']")).first().await {
-                        println!("Selecting Passenger Gender...");
-                        let _ = gender_select.send_keys(&passenger_gender).await;
-                        let _ = gender_select.send_keys(thirtyfour::Key::Enter).await;
-                    } else {
-                        println!("Could not find Passenger Gender select.");
-                    }
-
-                    // Passenger Berth Preference
-                    if let Ok(pref_select) = driver.query(By::Css("select[formcontrolname='passengerBerthChoice'], p-dropdown[formcontrolname='passengerBerthChoice']")).first().await {
-                        println!("Selecting Passenger Preference...");
-                        let _ = pref_select.send_keys(&passenger_pref).await;
-                    } else {
-                        println!("Could not find Passenger Berth Preference.");
-                    }
-
+                    // IRCTC Co-branded Card Benefits: Select "Skip"
                     tokio::time::sleep(Duration::from_secs(1)).await;
-                    
+                    println!("Step: Selecting IRCTC Co-branded Card Benefits: Skip...");
+                    // Try to find the radio button box within the Skip component (id lo-3)
+                    let skip_radio_xpath = "//p-radiobutton[@id='lo-3']//div[contains(@class, 'ui-radiobutton-box')]";
+                    if let Ok(skip_radio) = driver.query(By::XPath(skip_radio_xpath)).first().await {
+                        println!("Found 'Skip' radio box, scrolling and clicking...");
+                        let _ = driver.execute("arguments[0].scrollIntoView(true);", vec![skip_radio.to_json()?]).await;
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        let _ = driver.execute("arguments[0].click();", vec![skip_radio.to_json()?]).await;
+                        println!("Clicked 'Skip' radio button.");
+                    } else {
+                        // Fallback to label search
+                        println!("Warning: Could not find 'lo-3' radio box, trying label fallback...");
+                        let skip_label_xpath = "//label[contains(normalize-space(), 'Skip')]";
+                        if let Ok(skip_label) = driver.query(By::XPath(skip_label_xpath)).first().await {
+                            let _ = driver.execute("arguments[0].click();", vec![skip_label.to_json()?]).await;
+                            println!("Clicked 'Skip' label.");
+                        } else {
+                            println!("Error: Could not find any element for 'Skip' radio button.");
+                        }
+                    }
+
+                    // Other Preferences: Consider for Auto Upgradation
+                    println!("Step: Checking 'Consider for Auto Upgradation' checkbox...");
+                    let auto_up_xpath = "//input[@id='autoUpgradation'] | //label[@for='autoUpgradation']";
+                    if let Ok(auto_up) = driver.query(By::XPath(auto_up_xpath)).first().await {
+                        println!("Found 'Auto Upgradation' option, scrolling and clicking...");
+                        let _ = driver.execute("arguments[0].scrollIntoView(true);", vec![auto_up.to_json()?]).await;
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        let _ = driver.execute("arguments[0].click();", vec![auto_up.to_json()?]).await;
+                        println!("Clicked 'Auto Upgradation' checkbox.");
+                    } else {
+                        println!("Warning: Could not find 'Consider for Auto Upgradation' checkbox.");
+                    }
+
                     // Click Continue Button
                     println!("Looking for Continue button...");
                     if let Ok(continue_btn) = driver.query(By::XPath("//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]")).wait(Duration::from_secs(5), Duration::from_millis(500)).first().await {
