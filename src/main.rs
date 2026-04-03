@@ -364,6 +364,33 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                     "Could not find the class '{}' block or it was unavailable.",
                     journey_class
                 );
+            } else {
+                // If we successfully clicked the class block, now wait for the availability dates to expand and click the Book Now button
+                println!("Waiting for availability data to expand...");
+                tokio::time::sleep(Duration::from_secs(3)).await;
+
+                // Attempt to click the first availability date box
+                println!("Clicking on the availability date box...");
+                if let Ok(date_block) = card.query(By::Css("table td div.pre-avl, div.ui-table td div")).wait(Duration::from_secs(5), Duration::from_millis(500)).first().await {
+                    let r = driver.execute("arguments[0].click();", vec![date_block.to_json()?]).await;
+                    if r.is_err() {
+                        let _ = date_block.click().await;
+                    }
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                } else {
+                    println!("Could not find specific date block, proceeding to click Book Now directly if possible...");
+                }
+
+                println!("Clicking 'Book Now' button...");
+                if let Ok(book_now_btn) = card.query(By::Css("button.btnDefault.train_Search, button.disable-book")).wait(Duration::from_secs(5), Duration::from_millis(500)).first().await {
+                    let r = driver.execute("arguments[0].click();", vec![book_now_btn.to_json()?]).await;
+                    if r.is_err() {
+                        let _ = book_now_btn.click().await;
+                    }
+                    println!("Successfully clicked Book Now!");
+                } else {
+                    println!("Error: Could not find 'Book Now' button. Is availability open?");
+                }
             }
         } else {
             println!("Could not find any class blocks inside the train card.");
